@@ -532,4 +532,4 @@ docker compose pull && docker compose up -d
 
 ## License
 
-© 2024 Mahmoud Abozaid. All rights reserved.
+© 2026 Mahmoud Abozaid. All rights reserved.
