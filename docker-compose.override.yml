@@ -1,0 +1,17 @@
+version: "3.9"
+
+# Dev overrides — auto-merged by docker-compose.
+# Enables opcache file-change detection so edits reflect without container restarts.
+
+services:
+
+  app:
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+    volumes:
+      - ./docker/php/dev.ini:/usr/local/etc/php/conf.d/zz-dev.ini:ro
+
+  queue-worker:
+    volumes:
+      - ./docker/php/dev.ini:/usr/local/etc/php/conf.d/zz-dev.ini:ro

@@ -1,0 +1,419 @@
+{
+  "info": {
+    "name": "Financial App API",
+    "_postman_id": "financial-app-api-v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Financial Requests API — all routes require Bearer token auth.\n\nState machine transitions:\n  pending → under_review | cancelled\n  under_review → approved | rejected\n  approved → processing | cancelled\n  processing → completed | failed\n  failed → processing | cancelled\n\nIdempotency:\n  POST /financial-requests requires an `Idempotency-Key` header (any unique string).\n  Re-sending the same key within 24 h returns the original response with X-Idempotent-Replayed: true."
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string",
+      "description": "Sanctum Bearer token — auto-populated by the Login request test script."
+    },
+    {
+      "key": "id",
+      "value": "",
+      "type": "string",
+      "description": "Financial request ID — auto-populated by the Create request test script."
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const token = pm.response.json().token;",
+                  "    pm.collectionVariables.set('token', token);",
+                  "    console.log('token saved:', token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Exchange email + password for a Sanctum Bearer token.\n\nThe token is automatically saved to the `token` collection variable on success — all subsequent requests will use it."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Accept", "value": "application/json" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/login" }
+              },
+              "body": "{\n  \"token\": \"1|abc123xyz...\",\n  \"user\": {\n    \"id\": 1,\n    \"name\": \"Test User\",\n    \"email\": \"test@example.com\"\n  }\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            },
+            {
+              "name": "422 Unprocessable — Wrong credentials",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Accept", "value": "application/json" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"wrong\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/login" }
+              },
+              "body": "{\n  \"message\": \"The provided credentials are incorrect.\",\n  \"errors\": {\n    \"email\": [\"The provided credentials are incorrect.\"]\n  }\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Revokes the current Bearer token."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": { "raw": "{{base_url}}/auth/logout" }
+              },
+              "body": "{\n  \"message\": \"Logged out successfully.\"\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Financial Requests",
+      "item": [
+        {
+          "name": "List Financial Requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/financial-requests?page=1",
+              "host": ["{{base_url}}"],
+              "path": ["financial-requests"],
+              "query": [
+                { "key": "page", "value": "1", "description": "Page number" }
+              ]
+            },
+            "description": "Returns a paginated list of financial requests belonging to the authenticated user."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "originalRequest": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": { "raw": "{{base_url}}/financial-requests" }
+              },
+              "body": "{\n  \"data\": [\n    {\n      \"id\": 1,\n      \"amount\": \"1500.0000\",\n      \"currency\": \"USD\",\n      \"status\": {\n        \"value\": \"pending\",\n        \"label\": \"Pending\"\n      },\n      \"external_reference\": \"INV-2024-001\",\n      \"metadata\": { \"department\": \"finance\" },\n      \"is_terminal\": false,\n      \"created_at\": \"2024-01-15T10:00:00+00:00\",\n      \"updated_at\": \"2024-01-15T10:00:00+00:00\"\n    }\n  ],\n  \"links\": {\n    \"first\": \"http://localhost:8080/api/v1/financial-requests?page=1\",\n    \"last\": \"http://localhost:8080/api/v1/financial-requests?page=1\",\n    \"prev\": null,\n    \"next\": null\n  },\n  \"meta\": {\n    \"current_page\": 1,\n    \"from\": 1,\n    \"last_page\": 1,\n    \"per_page\": 15,\n    \"to\": 1,\n    \"total\": 1\n  }\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            }
+          ]
+        },
+        {
+          "name": "Create Financial Request",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const id = pm.response.json().data.id;",
+                  "    pm.collectionVariables.set('id', id);",
+                  "    console.log('id saved:', id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$randomUUID}}", "description": "Unique key per request. Resending the same key within 24 h returns the original response." }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"1500.00\",\n  \"currency\": \"USD\",\n  \"external_reference\": \"INV-2024-001\",\n  \"metadata\": {\n    \"department\": \"finance\",\n    \"notes\": \"Q1 payment\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/financial-requests",
+              "host": ["{{base_url}}"],
+              "path": ["financial-requests"]
+            },
+            "description": "Creates a new financial request.\n\nRequires `Idempotency-Key` header — re-sending the same key within 24 h returns the original cached response with `X-Idempotent-Replayed: true` instead of creating a duplicate.\n\nOn success, the `id` is automatically saved to the `id` collection variable."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Accept", "value": "application/json" },
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Idempotency-Key", "value": "my-unique-key-abc123" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"amount\": \"1500.00\",\n  \"currency\": \"USD\",\n  \"external_reference\": \"INV-2024-001\",\n  \"metadata\": { \"department\": \"finance\" }\n}"
+                },
+                "url": { "raw": "{{base_url}}/financial-requests" }
+              },
+              "body": "{\n  \"data\": {\n    \"id\": 1,\n    \"amount\": \"1500.0000\",\n    \"currency\": \"USD\",\n    \"status\": {\n      \"value\": \"pending\",\n      \"label\": \"Pending\"\n    },\n    \"external_reference\": \"INV-2024-001\",\n    \"metadata\": { \"department\": \"finance\" },\n    \"is_terminal\": false,\n    \"created_at\": \"2024-01-15T10:00:00+00:00\",\n    \"updated_at\": \"2024-01-15T10:00:00+00:00\"\n  }\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            },
+            {
+              "name": "200 OK — Idempotent replay",
+              "status": "OK",
+              "code": 200,
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Accept", "value": "application/json" },
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Idempotency-Key", "value": "my-unique-key-abc123" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"amount\": \"1500.00\",\n  \"currency\": \"USD\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/financial-requests" }
+              },
+              "body": "{\n  \"data\": {\n    \"id\": 1,\n    \"amount\": \"1500.0000\",\n    \"currency\": \"USD\",\n    \"status\": { \"value\": \"pending\", \"label\": \"Pending\" },\n    \"external_reference\": \"INV-2024-001\",\n    \"metadata\": { \"department\": \"finance\" },\n    \"is_terminal\": false,\n    \"created_at\": \"2024-01-15T10:00:00+00:00\",\n    \"updated_at\": \"2024-01-15T10:00:00+00:00\"\n  }\n}",
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "X-Idempotent-Replayed", "value": "true" }
+              ]
+            },
+            {
+              "name": "422 Unprocessable — Missing Idempotency-Key",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Accept", "value": "application/json" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"amount\": \"1500.00\",\n  \"currency\": \"USD\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/financial-requests" }
+              },
+              "body": "{\n  \"message\": \"The Idempotency-Key header is required.\"\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            }
+          ]
+        },
+        {
+          "name": "Get Financial Request",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/financial-requests/{{id}}",
+              "host": ["{{base_url}}"],
+              "path": ["financial-requests", "{{id}}"]
+            },
+            "description": "Retrieve a single financial request by ID."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "originalRequest": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": { "raw": "{{base_url}}/financial-requests/1" }
+              },
+              "body": "{\n  \"data\": {\n    \"id\": 1,\n    \"amount\": \"1500.0000\",\n    \"currency\": \"USD\",\n    \"status\": {\n      \"value\": \"pending\",\n      \"label\": \"Pending\"\n    },\n    \"external_reference\": \"INV-2024-001\",\n    \"metadata\": { \"department\": \"finance\" },\n    \"is_terminal\": false,\n    \"created_at\": \"2024-01-15T10:00:00+00:00\",\n    \"updated_at\": \"2024-01-15T10:00:00+00:00\"\n  }\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            },
+            {
+              "name": "404 Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "originalRequest": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": { "raw": "{{base_url}}/financial-requests/99999" }
+              },
+              "body": "{\n  \"message\": \"No query results for model [App\\\\Domain\\\\Financial\\\\Models\\\\FinancialRequest].\"\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            }
+          ]
+        },
+        {
+          "name": "Get Allowed Transitions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/financial-requests/{{id}}/allowed-transitions",
+              "host": ["{{base_url}}"],
+              "path": ["financial-requests", "{{id}}", "allowed-transitions"]
+            },
+            "description": "Returns the list of valid `target_status` values for the current state of this request.\n\nCall this before `Transition` to know what transitions are available."
+          },
+          "response": [
+            {
+              "name": "200 OK — pending request",
+              "status": "OK",
+              "code": 200,
+              "originalRequest": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": { "raw": "{{base_url}}/financial-requests/1/allowed-transitions" }
+              },
+              "body": "{\n  \"data\": [\"under_review\", \"cancelled\"]\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            }
+          ]
+        },
+        {
+          "name": "Transition Financial Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"target_status\": \"under_review\",\n  \"reason\": \"Submitted for review\",\n  \"metadata\": {\n    \"reviewed_by\": \"manager@example.com\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/financial-requests/{{id}}/transition",
+              "host": ["{{base_url}}"],
+              "path": ["financial-requests", "{{id}}", "transition"]
+            },
+            "description": "Transitions the request to a new status.\n\nValid `target_status` values:\n  `pending` `under_review` `approved` `rejected` `processing` `completed` `failed` `cancelled`\n\nAllowed transitions by state:\n  pending       → under_review, cancelled\n  under_review  → approved, rejected\n  approved      → processing, cancelled\n  processing    → completed, failed\n  failed        → processing, cancelled"
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Accept", "value": "application/json" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"target_status\": \"under_review\",\n  \"reason\": \"Submitted for review\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/financial-requests/1/transition" }
+              },
+              "body": "{\n  \"data\": {\n    \"id\": 1,\n    \"amount\": \"1500.0000\",\n    \"currency\": \"USD\",\n    \"status\": {\n      \"value\": \"under_review\",\n      \"label\": \"Under Review\"\n    },\n    \"external_reference\": \"INV-2024-001\",\n    \"metadata\": { \"department\": \"finance\" },\n    \"is_terminal\": false,\n    \"created_at\": \"2024-01-15T10:00:00+00:00\",\n    \"updated_at\": \"2024-01-15T10:05:00+00:00\"\n  }\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            },
+            {
+              "name": "422 Unprocessable — Invalid transition",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Accept", "value": "application/json" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"target_status\": \"completed\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/financial-requests/1/transition" }
+              },
+              "body": "{\n  \"message\": \"Cannot transition from [pending] to [completed].\",\n  \"from\": \"pending\",\n  \"to\": \"completed\"\n}",
+              "header": [{ "key": "Content-Type", "value": "application/json" }]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

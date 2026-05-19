@@ -1,0 +1,232 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  financial_net:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Named volumes (persist data across container restarts)
+# ---------------------------------------------------------------------------
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
+
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+services:
+
+  # --------------------------------------------------------------------------
+  # PHP-FPM application
+  # --------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: production
+    image: financial-app:latest
+    container_name: financial_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV:              ${APP_ENV:-production}
+      APP_KEY:              ${APP_KEY}
+      APP_DEBUG:            ${APP_DEBUG:-false}
+      APP_URL:              ${APP_URL:-http://localhost}
+      DB_CONNECTION:        pgsql
+      DB_HOST:              postgres
+      DB_PORT:              5432
+      DB_DATABASE:          ${DB_DATABASE:-financial_db}
+      DB_USERNAME:          ${DB_USERNAME:-financial_user}
+      DB_PASSWORD:          ${DB_PASSWORD}
+      REDIS_HOST:           redis
+      REDIS_PORT:           6379
+      REDIS_PASSWORD:       ${REDIS_PASSWORD:-}
+      QUEUE_CONNECTION:     redis
+      CACHE_STORE:          redis
+      SESSION_DRIVER:       redis
+      ERP_BASE_URL:         ${ERP_BASE_URL}
+      ERP_API_KEY:          ${ERP_API_KEY}
+      ERP_TIMEOUT_SECONDS:  ${ERP_TIMEOUT_SECONDS:-15}
+    volumes:
+      - ./:/var/www/html
+      - storage_data:/var/www/html/storage
+      - ./storage/logs:/var/www/html/storage/logs
+    networks:
+      - financial_net
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm-healthcheck || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # --------------------------------------------------------------------------
+  # Nginx reverse proxy / static file server
+  # --------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: financial_nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    depends_on:
+      - app
+    volumes:
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./public:/var/www/html/public:ro
+      - storage_data:/var/www/html/storage:ro
+    networks:
+      - financial_net
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --------------------------------------------------------------------------
+  # Queue workers — dedicated container for isolation and horizontal scaling
+  # --------------------------------------------------------------------------
+  queue-worker:
+    image: financial-app:latest
+    restart: unless-stopped
+    command: ["php", "artisan", "queue:work", "redis", "--queue=reconciliation,default", "--sleep=3", "--tries=0", "--max-time=3600", "--memory=256"]
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV:              ${APP_ENV:-production}
+      APP_KEY:              ${APP_KEY}
+      DB_CONNECTION:        pgsql
+      DB_HOST:              postgres
+      DB_PORT:              5432
+      DB_DATABASE:          ${DB_DATABASE:-financial_db}
+      DB_USERNAME:          ${DB_USERNAME:-financial_user}
+      DB_PASSWORD:          ${DB_PASSWORD}
+      REDIS_HOST:           redis
+      REDIS_PORT:           6379
+      REDIS_PASSWORD:       ${REDIS_PASSWORD:-}
+      QUEUE_CONNECTION:     redis
+      ERP_BASE_URL:         ${ERP_BASE_URL}
+      ERP_API_KEY:          ${ERP_API_KEY}
+    volumes:
+      - ./:/var/www/html
+      - storage_data:/var/www/html/storage
+    networks:
+      - financial_net
+    deploy:
+      replicas: 1  # Scale horizontally by increasing this value
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # --------------------------------------------------------------------------
+  # Horizon (optional — for queue monitoring dashboard)
+  # --------------------------------------------------------------------------
+  horizon:
+    image: financial-app:latest
+    container_name: financial_horizon
+    restart: unless-stopped
+    command: ["php", "artisan", "horizon"]
+    profiles:
+      - monitoring
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV:        ${APP_ENV:-production}
+      APP_KEY:        ${APP_KEY}
+      DB_CONNECTION:  pgsql
+      DB_HOST:        postgres
+      DB_PORT:        5432
+      DB_DATABASE:    ${DB_DATABASE:-financial_db}
+      DB_USERNAME:    ${DB_USERNAME:-financial_user}
+      DB_PASSWORD:    ${DB_PASSWORD}
+      REDIS_HOST:     redis
+      REDIS_PORT:     6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    volumes:
+      - storage_data:/var/www/html/storage
+    networks:
+      - financial_net
+
+  # --------------------------------------------------------------------------
+  # PostgreSQL 16
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: financial_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_DATABASE:-financial_db}
+      POSTGRES_USER:     ${DB_USERNAME:-financial_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      PGDATA:            /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - financial_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-financial_user} -d ${DB_DATABASE:-financial_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # --------------------------------------------------------------------------
+  # Redis 7
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: financial_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-}
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - financial_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:-}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # --------------------------------------------------------------------------
+  # pgAdmin (optional — dev/ops tooling)
+  # --------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: financial_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    networks:
+      - financial_net
