@@ -6,10 +6,9 @@ namespace App\Domain\Financial\Listeners;
 
 use App\Domain\Financial\Events\FinancialRequestApproved;
 use App\Jobs\ReconcileTransactionJob;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Log;
 
-final class InitiateReconciliation implements ShouldQueue
+final class InitiateReconciliation
 {
     public function handle(FinancialRequestApproved $event): void
     {

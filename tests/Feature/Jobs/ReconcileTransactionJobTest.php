@@ -11,8 +11,6 @@ use App\Domain\Financial\Services\FinancialRequestStateService;
 use App\Domain\Financial\Services\IdempotencyService;
 use App\Jobs\ReconcileTransactionJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Queue;
 
 uses(RefreshDatabase::class);
 
@@ -70,8 +68,7 @@ describe('ReconcileTransactionJob', function () {
         Event::fake();
 
         $request = FinancialRequest::factory()->create([
-            'status'          => FinancialRequestStatus::Approved,
-            'idempotency_key' => 'idem-001',
+            'status' => FinancialRequestStatus::Approved,
         ]);
 
         [$repository, $erpService, $idempotencyService, $stateService] = makeJobDependencies($request);
@@ -84,8 +81,7 @@ describe('ReconcileTransactionJob', function () {
 
     it('skips processing when idempotency record shows already completed', function () {
         $request = FinancialRequest::factory()->create([
-            'status'          => FinancialRequestStatus::Processing,
-            'idempotency_key' => 'idem-already-done',
+            'status' => FinancialRequestStatus::Processing,
         ]);
 
         [$repository, $erpService, $idempotencyService, $stateService] = makeJobDependencies(
@@ -106,8 +102,7 @@ describe('ReconcileTransactionJob', function () {
         Event::fake();
 
         $request = FinancialRequest::factory()->create([
-            'status'          => FinancialRequestStatus::Approved,
-            'idempotency_key' => 'idem-erp-fail',
+            'status' => FinancialRequestStatus::Approved,
         ]);
 
         [$repository, $erpService, $idempotencyService, $stateService] = makeJobDependencies(
@@ -130,8 +125,7 @@ describe('ReconcileTransactionJob', function () {
         Event::fake();
 
         $request = FinancialRequest::factory()->create([
-            'status'          => FinancialRequestStatus::Processing,
-            'idempotency_key' => 'idem-permanent-fail',
+            'status' => FinancialRequestStatus::Processing,
         ]);
 
         $job = new ReconcileTransactionJob($request->id, 'idem-permanent-fail');
@@ -144,8 +138,7 @@ describe('ReconcileTransactionJob', function () {
         Event::fake();
 
         $request = FinancialRequest::factory()->create([
-            'status'          => FinancialRequestStatus::Approved,
-            'idempotency_key' => 'idem-lock-release',
+            'status' => FinancialRequestStatus::Approved,
         ]);
 
         $lock = Mockery::mock(\Illuminate\Contracts\Cache\Lock::class);
@@ -176,19 +169,19 @@ describe('ReconcileTransactionJob', function () {
     });
 
     it('has correct backoff sequence', function () {
-        $job = new ReconcileTransactionJob('uuid', 'key');
+        $job = new ReconcileTransactionJob(1, 'key');
 
         expect($job->backoff())->toBe([30, 60, 120, 300, 600]);
     });
 
     it('retries for up to 24 hours', function () {
-        $job = new ReconcileTransactionJob('uuid', 'key');
+        $job = new ReconcileTransactionJob(1, 'key');
 
-        expect($job->retryUntil()->diffInHours(now()))->toBe(24);
+        expect((int) round(abs($job->retryUntil()->diffInHours(now()))))->toBe(24);
     });
 
     it('targets the reconciliation queue on the redis connection', function () {
-        $job = new ReconcileTransactionJob('uuid', 'key');
+        $job = new ReconcileTransactionJob(1, 'key');
 
         // Queueable stores these in public properties set by onQueue()/onConnection().
         expect($job->queue)->toBe('reconciliation')

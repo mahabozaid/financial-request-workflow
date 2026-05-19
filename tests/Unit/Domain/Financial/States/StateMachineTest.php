@@ -15,9 +15,8 @@ function makeRequest(FinancialRequestStatus $status): FinancialRequest
 {
     $model = Mockery::mock(FinancialRequest::class)->makePartial();
     $model->shouldReceive('save')->andReturn(true);
-    $model->shouldReceive('getAttribute')->with('id')->andReturn(123);
-    $model->status   = $status;
     $model->id       = 123;
+    $model->status   = $status;
     $model->metadata = null;
 
     return $model;

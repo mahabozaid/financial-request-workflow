@@ -17,12 +17,24 @@ describe('IdempotencyService', function () {
     // -------------------------------------------------------------------------
 
     it('acquires a Redis lock for the given key', function () {
-        Cache::shouldReceive('lock')
+        $mockLock  = Mockery::mock(\Illuminate\Contracts\Cache\Lock::class);
+        $mockStore = Mockery::mock(\Illuminate\Cache\Repository::class);
+        $mockStore->shouldReceive('lock')
             ->once()
-            ->with('idempotency_lock:test-key', 120, null)
-            ->andReturn(Mockery::mock(\Illuminate\Contracts\Cache\Lock::class));
+            ->withAnyArgs()
+            ->andReturnUsing(function (string $name, int $seconds, mixed $owner) use ($mockLock) {
+                expect($name)->toBe('idempotency_lock:test-key')
+                    ->and($seconds)->toBe(120)
+                    ->and($owner)->toBeNull();
 
-        $this->service->acquireLock('test-key');
+                return $mockLock;
+            });
+
+        Cache::swap($mockStore);
+
+        $result = $this->service->acquireLock('test-key');
+
+        expect($result)->toBe($mockLock);
     });
 
     // -------------------------------------------------------------------------

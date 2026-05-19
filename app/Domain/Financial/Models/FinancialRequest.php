@@ -22,7 +22,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property \Carbon\Carbon         $updated_at
  * @property \Carbon\Carbon|null    $deleted_at
  */
-final class FinancialRequest extends Model
+class FinancialRequest extends Model
 {
     /** @use HasFactory<FinancialRequestFactory> */
     use HasFactory, SoftDeletes;

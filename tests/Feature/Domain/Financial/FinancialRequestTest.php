@@ -22,10 +22,11 @@ uses(RefreshDatabase::class);
 describe('FinancialRequestService', function () {
 
     it('creates a financial request in Pending status', function () {
+        $user    = \App\Models\User::factory()->create();
         $service = app(FinancialRequestService::class);
 
         $data = new CreateFinancialRequestData(
-            userId:    1,
+            userId:    $user->id,
             amount:    '1500.00',
             currency:  'USD',
         );
@@ -39,16 +40,17 @@ describe('FinancialRequestService', function () {
     });
 
     it('creates distinct requests with same user', function () {
+        $user    = \App\Models\User::factory()->create();
         $service = app(FinancialRequestService::class);
 
         $first = $service->create(new CreateFinancialRequestData(
-            userId:   1,
+            userId:   $user->id,
             amount:   '1000.00',
             currency: 'EUR',
         ));
 
         $second = $service->create(new CreateFinancialRequestData(
-            userId:   1,
+            userId:   $user->id,
             amount:   '1000.00',
             currency: 'EUR',
         ));
@@ -58,10 +60,11 @@ describe('FinancialRequestService', function () {
     });
 
     it('creates distinct requests for different amounts', function () {
+        $user    = \App\Models\User::factory()->create();
         $service = app(FinancialRequestService::class);
 
-        $first  = $service->create(new CreateFinancialRequestData(1, '500.00', 'GBP'));
-        $second = $service->create(new CreateFinancialRequestData(1, '600.00', 'GBP'));
+        $first  = $service->create(new CreateFinancialRequestData($user->id, '500.00', 'GBP'));
+        $second = $service->create(new CreateFinancialRequestData($user->id, '600.00', 'GBP'));
 
         expect($first->id)->not->toBe($second->id)
             ->and(FinancialRequest::count())->toBe(2);
@@ -123,7 +126,6 @@ describe('FinancialRequestStateService', function () {
 
     it('dispatches ReconcileTransactionJob when request is Approved', function () {
         Queue::fake();
-        Event::fake();
 
         $financialRequest = FinancialRequest::factory()->create([
             'status' => FinancialRequestStatus::UnderReview,

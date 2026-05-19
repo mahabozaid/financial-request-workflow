@@ -8,7 +8,7 @@ use App\Domain\Financial\DTOs\ReconcileTransactionData;
 use Illuminate\Support\Facades\Log;
 
 
-final class ERPReconciliationService
+class ERPReconciliationService
 {
     public function __construct(
         private readonly string $baseUrl,

@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\DB;
  *  - Retries after a Redis restart (Layer 2 persists across restarts)
  *  - Race conditions between lock expiry and record persistence (atomic DB write)
  */
-final class IdempotencyService
+class IdempotencyService
 {
     private const LOCK_TTL_SECONDS    = 120;
     private const RECORD_TTL_SECONDS  = 86_400 * 7; // 7 days
