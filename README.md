@@ -24,7 +24,7 @@ A production-grade **financial request management system** built with Laravel 13
 - [CI/CD Pipeline](#cicd-pipeline)
 - [Testing](#testing)
 - [Getting Started](#getting-started)
-- [Cloud Cost Optimization — Self-Hosted n8n on AWS](#cloud-cost-optimization--self-hosted-n8n-on-aws-10month)
+- [Cloud Cost Optimization: Self-Hosted n8n on AWS](#cloud-cost-optimization-self-hosted-n8n-on-aws)
 
 ---
 
@@ -426,7 +426,7 @@ make test-docker
 
 ---
 
-## Cloud Cost Optimization — Self-Hosted n8n on AWS (< $10/month)
+## Cloud Cost Optimization: Self-Hosted n8n on AWS
 
 Instead of a $50+/month n8n cloud subscription, the same automation engine runs self-hosted on AWS for under $7/month total.
 
