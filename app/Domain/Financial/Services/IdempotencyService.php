@@ -7,22 +7,6 @@ namespace App\Domain\Financial\Services;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Two-layer idempotency strategy:
- *
- *  Layer 1 — Redis distributed lock (Cache::lock):
- *    Prevents concurrent workers from processing the same key simultaneously.
- *    Lock TTL must exceed the longest expected ERP call duration.
- *
- *  Layer 2 — Database row in `idempotency_records`:
- *    Provides durable, crash-safe record of completion that survives Redis flushes.
- *    A unique index on `idempotency_key` provides the ultimate DB-level guarantee.
- *
- * Together these layers protect against:
- *  - Concurrent duplicate requests (Layer 1 blocks parallel execution)
- *  - Retries after a Redis restart (Layer 2 persists across restarts)
- *  - Race conditions between lock expiry and record persistence (atomic DB write)
- */
 class IdempotencyService
 {
     private const LOCK_TTL_SECONDS    = 120;
