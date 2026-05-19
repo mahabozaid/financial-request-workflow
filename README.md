@@ -24,6 +24,7 @@ A production-grade **financial request management system** built with Laravel 13
 - [CI/CD Pipeline](#cicd-pipeline)
 - [Testing](#testing)
 - [Getting Started](#getting-started)
+- [Cloud Cost Optimization — Self-Hosted n8n on AWS](#cloud-cost-optimization--self-hosted-n8n-on-aws-10month)
 
 ---
 
@@ -423,6 +424,112 @@ make test-docker
 
 ---
 
+---
+
+## Cloud Cost Optimization — Self-Hosted n8n on AWS (< $10/month)
+
+Instead of a $50+/month n8n cloud subscription, the same automation engine runs self-hosted on AWS for under $7/month total.
+
+### EC2 Instance
+
+| Setting | Choice | Reason |
+|---|---|---|
+| Type | **t4g.micro** (ARM Graviton2) | Cheapest general-purpose instance with enough RAM for n8n |
+| vCPU / RAM | 2 vCPU / 1 GB | Sufficient for low-to-medium workflow load |
+| On-demand price | ~$6.05 / month | $0.0084/hr × 730 h |
+| OS | Amazon Linux 2023 (ARM) | Free, minimal footprint, security-patched |
+| Storage | 8 GB **gp3** EBS | $0.64/month — 20 % cheaper than gp2, better baseline IOPS |
+
+**Estimated monthly bill: ~$6.70** (instance + storage, no RDS, no NAT Gateway, no load balancer).
+
+### Docker Deployment
+
+Single `docker-compose.yml` on the instance — no orchestrator overhead:
+
+```yaml
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"   # only localhost — Caddy terminates TLS
+    environment:
+      - N8N_HOST=${DOMAIN}
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=https://${DOMAIN}/
+      - DB_TYPE=sqlite             # no RDS — saves $15+/month
+      - N8N_ENCRYPTION_KEY=${KEY}
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+
+volumes:
+  n8n_data:
+  caddy_data:
+```
+
+**Caddyfile** (free automatic TLS via Let's Encrypt):
+
+```
+yourdomain.com {
+    reverse_proxy n8n:5678
+}
+```
+
+```bash
+# Deploy in one command
+docker compose up -d
+
+# Upgrade with zero-config
+docker compose pull && docker compose up -d
+```
+
+### Cost Optimization Strategies
+
+| Strategy | Saving |
+|---|---|
+| **t4g over t3** — ARM Graviton2 is 20 % cheaper per vCPU | ~$1.50/month |
+| **SQLite instead of RDS** — n8n works fine on SQLite for single-instance use | ~$15/month |
+| **Caddy instead of ALB** — free TLS termination on the same host | ~$16/month |
+| **gp3 over gp2** — same IOPS at lower cost | ~$0.15/month |
+| **Public subnet, no NAT Gateway** — n8n only needs outbound internet for webhooks | ~$32/month |
+| **1-year Reserved Instance** — if usage is confirmed stable | further 30 % off EC2 |
+
+### Cloud Waste Reduction Policies
+
+```
+1. Billing alert   — AWS Budget alarm at $8 sends email before limit is hit
+2. Instance scheduler — stop the instance nights + weekends if workflows are
+                        business-hours only (saves up to 65 % of EC2 cost)
+3. Lifecycle policy — EBS snapshots kept for 7 days only, auto-deleted after
+4. Resource tagging — all resources tagged Project=n8n, Env=prod for
+                      Cost Explorer drill-down
+5. CloudWatch Logs  — retention set to 7 days (default is forever = $$$)
+6. Elastic IP       — released immediately if instance is terminated to avoid
+                      the $0.005/hr idle charge
+```
+
+### Cost Summary
+
+| Resource | Monthly Cost |
+|---|---|
+| t4g.micro on-demand | $6.05 |
+| 8 GB gp3 EBS | $0.64 |
+| Data transfer (< 1 GB out) | ~$0.09 |
+| CloudWatch metrics (basic) | $0.00 |
+| **Total** | **≈ $6.78** |
+
+---
+
 ## License
 
-Proprietary.
+© 2024 Mahmoud Abozaid. All rights reserved.
